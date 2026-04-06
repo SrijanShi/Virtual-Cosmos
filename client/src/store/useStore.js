@@ -91,6 +91,14 @@ const useStore = create((set) => ({
   })),
 
   setOpenRoom: (roomId) => set({ openRoomId: roomId }),
+
+  loadHistory: (history) => set((state) => {
+    const merged = { ...state.activeRooms };
+    for (const [roomId, msgs] of Object.entries(history)) {
+      merged[roomId] = msgs;
+    }
+    return { activeRooms: merged };
+  }),
 }));
 
 export default useStore;

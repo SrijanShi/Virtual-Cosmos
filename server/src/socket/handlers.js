@@ -27,7 +27,7 @@ function serializeUsers(sessionUsers) {
 function registerHandlers(io, socket) {
 
   // ── Join session ─────────────────────────────────────────────────────────
-  socket.on('user:join', ({ username, sessionCode }) => {
+  socket.on('user:join', async ({ username, sessionCode }) => {
     const code  = sessionCode.toUpperCase();
     const users = getOrCreateSession(code);
 
@@ -44,6 +44,23 @@ function registerHandlers(io, socket) {
 
     // Notify everyone else in the session
     socket.to(code).emit('user:joined', { socketId: socket.id, username, x: startX, y: startY });
+
+    // Send message history for this username in this session
+    try {
+      const userRooms = await Message.distinct('roomId', { sessionCode: code, username });
+      if (userRooms.length) {
+        const messages = await Message.find({ sessionCode: code, roomId: { $in: userRooms } })
+          .sort({ timestamp: 1 }).limit(500).lean();
+        const history = {};
+        for (const msg of messages) {
+          if (!history[msg.roomId]) history[msg.roomId] = [];
+          history[msg.roomId].push({ from: msg.username, username: msg.username, text: msg.text, timestamp: new Date(msg.timestamp).getTime() });
+        }
+        socket.emit('history:load', { history });
+      }
+    } catch (err) {
+      console.error('Failed to load history:', err.message);
+    }
   });
 
   // ── Move ─────────────────────────────────────────────────────────────────

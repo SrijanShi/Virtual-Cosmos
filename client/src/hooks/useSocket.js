@@ -42,6 +42,10 @@ export function useSocket() {
       useStore.getState().addMessage(roomId, { from, username, text, timestamp });
     });
 
+    socket.on('history:load', ({ history }) => {
+      useStore.getState().loadHistory(history);
+    });
+
     // Status updates (mute, hand raise)
     socket.on('user:status', ({ socketId, status }) => {
       useStore.getState().setUserStatus(socketId, status);

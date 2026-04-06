@@ -16,9 +16,14 @@ export default function LandingPage({ onEnter }) {
   const [isPrivate, setIsPrivate]     = useState(false);
   const [selectedRooms, setSelectedRooms] = useState(['DSA', 'Flutter', 'Python', 'Dev Club']);
 
+  // Create form – password (private)
+  const [createPassword, setCreatePassword] = useState('');
+
   // Join form
   const [joinName, setJoinName]   = useState('');
   const [joinCode, setJoinCode]   = useState('');
+  const [joinPassword, setJoinPassword] = useState('');
+  const [joinNeedsPassword, setJoinNeedsPassword] = useState(false);
 
   // Auto-fill code from URL ?session=XXXX
   useEffect(() => {
@@ -38,12 +43,15 @@ export default function LandingPage({ onEnter }) {
     if (!hostName.trim() || !spaceName.trim() || selectedRooms.length === 0) {
       setError('Please fill all fields and select at least one room.'); return;
     }
+    if (isPrivate && !createPassword.trim()) {
+      setError('Please set a password for the private space.'); return;
+    }
     setLoading(true); setError('');
     try {
       const res = await fetch('http://localhost:3001/session/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: spaceName.trim(), hostName: hostName.trim(), isPrivate, rooms: selectedRooms }),
+        body: JSON.stringify({ name: spaceName.trim(), hostName: hostName.trim(), isPrivate, password: createPassword.trim(), rooms: selectedRooms }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create');
@@ -60,9 +68,32 @@ export default function LandingPage({ onEnter }) {
     if (!joinName.trim() || !joinCode.trim()) { setError('Enter your name and session code.'); return; }
     setLoading(true); setError('');
     try {
-      const res = await fetch(`http://localhost:3001/session/${joinCode.trim().toUpperCase()}`);
+      const code = joinCode.trim().toUpperCase();
+      const res = await fetch(`http://localhost:3001/session/${code}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Session not found');
+
+      if (data.isPrivate && !joinNeedsPassword) {
+        // Show password prompt
+        setJoinNeedsPassword(true);
+        setLoading(false);
+        return;
+      }
+
+      if (data.isPrivate && joinNeedsPassword) {
+        // Verify password
+        const vRes = await fetch(`http://localhost:3001/session/${code}/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: joinPassword }),
+        });
+        const vData = await vRes.json();
+        if (!vRes.ok) throw new Error(vData.error || 'Incorrect password');
+        window.history.replaceState({}, '', `?session=${vData.code}`);
+        onEnter({ username: joinName.trim(), sessionCode: vData.code, sessionName: vData.name, rooms: vData.rooms, isHost: false });
+        return;
+      }
+
       window.history.replaceState({}, '', `?session=${data.code}`);
       onEnter({ username: joinName.trim(), sessionCode: data.code, sessionName: data.name, rooms: data.rooms, isHost: false });
     } catch (err) {
@@ -131,6 +162,12 @@ export default function LandingPage({ onEnter }) {
                   ))}
                 </div>
               </Field>
+              {isPrivate && (
+                <Field label="Password">
+                  <input value={createPassword} onChange={e => setCreatePassword(e.target.value)}
+                    type="password" placeholder="Set a password for this space" maxLength={50} style={inputStyle} />
+                </Field>
+              )}
               <Field label={`Rooms (${selectedRooms.length} selected)`}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {ALL_ROOMS.map(room => (
@@ -155,20 +192,36 @@ export default function LandingPage({ onEnter }) {
         {/* Join */}
         {view === 'join' && (
           <div>
-            <button onClick={() => { setView('home'); setError(''); }} style={backBtn}>← Back</button>
-            <h2 style={{ color: '#f9fafb', fontSize: 22, fontWeight: 700, margin: '0 0 24px' }}>Join a Space</h2>
+            <button onClick={() => { setView('home'); setError(''); setJoinNeedsPassword(false); setJoinPassword(''); }} style={backBtn}>← Back</button>
+            <h2 style={{ color: '#f9fafb', fontSize: 22, fontWeight: 700, margin: '0 0 24px' }}>
+              {joinNeedsPassword ? '🔒 Private Space' : 'Join a Space'}
+            </h2>
             <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <Field label="Your Name">
-                <input value={joinName} onChange={e => setJoinName(e.target.value)}
-                  placeholder="e.g. Srijan" maxLength={20} style={inputStyle} autoFocus />
-              </Field>
-              <Field label="Session Code">
-                <input value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. AB3K7Z" maxLength={6} style={{ ...inputStyle, letterSpacing: 6, fontWeight: 700, fontSize: 18, textAlign: 'center' }} />
-              </Field>
+              {!joinNeedsPassword ? (
+                <>
+                  <Field label="Your Name">
+                    <input value={joinName} onChange={e => setJoinName(e.target.value)}
+                      placeholder="e.g. Srijan" maxLength={20} style={inputStyle} autoFocus />
+                  </Field>
+                  <Field label="Session Code">
+                    <input value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. AB3K7Z" maxLength={6} style={{ ...inputStyle, letterSpacing: 6, fontWeight: 700, fontSize: 18, textAlign: 'center' }} />
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <p style={{ color: '#9ca3af', fontSize: 13, margin: '0 0 4px' }}>
+                    This space is private. Enter the password to join.
+                  </p>
+                  <Field label="Password">
+                    <input value={joinPassword} onChange={e => setJoinPassword(e.target.value)}
+                      type="password" placeholder="Enter space password" style={inputStyle} autoFocus />
+                  </Field>
+                </>
+              )}
               {error && <p style={{ color: '#f87171', fontSize: 12, margin: 0 }}>{error}</p>}
               <button type="submit" disabled={loading} style={btnStyle('#2563eb')}>
-                {loading ? 'Joining…' : 'Join Space'}
+                {loading ? (joinNeedsPassword ? 'Verifying…' : 'Joining…') : (joinNeedsPassword ? 'Enter Space' : 'Join Space')}
               </button>
             </form>
           </div>

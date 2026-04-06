@@ -5,7 +5,8 @@ const sessionSchema = new mongoose.Schema({
   name:      { type: String, required: true },
   hostName:  { type: String, required: true },
   isPrivate: { type: Boolean, default: false },
-  rooms:     [{ type: String }], // selected room names
+  password:  { type: String, default: '' }, // only used when isPrivate: true
+  rooms:     [{ type: String }],
   isActive:  { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
 });
