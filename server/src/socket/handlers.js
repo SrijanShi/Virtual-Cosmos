@@ -1,134 +1,151 @@
+const Message = require('../models/Message');
+
 const PROXIMITY_RADIUS = 150;
 
-// In-memory store for fast access during game loop
-const users = new Map(); // socketId -> { username, x, y, connectedTo: Set }
+// sessions: Map<sessionCode, Map<socketId, { username, x, y, connectedTo: Set }>>
+const sessions = new Map();
+
+function getOrCreateSession(code) {
+  if (!sessions.has(code)) sessions.set(code, new Map());
+  return sessions.get(code);
+}
 
 function getDistance(a, b) {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
-function getRoomId(id1, id2) {
-  return [id1, id2].sort().join('--');
+function getRoomId(sessionCode, id1, id2) {
+  return `${sessionCode}::${[id1, id2].sort().join('--')}`;
+}
+
+function serializeUsers(sessionUsers) {
+  return Array.from(sessionUsers.entries()).map(([socketId, u]) => ({
+    socketId, username: u.username, x: u.x, y: u.y,
+  }));
 }
 
 function registerHandlers(io, socket) {
-  // User joins the cosmos
-  socket.on('user:join', ({ username }) => {
-    const startX = 400 + Math.random() * 200;
+
+  // ── Join session ─────────────────────────────────────────────────────────
+  socket.on('user:join', ({ username, sessionCode }) => {
+    const code  = sessionCode.toUpperCase();
+    const users = getOrCreateSession(code);
+
+    const startX = 400 + Math.random() * 300;
     const startY = 300 + Math.random() * 200;
 
-    users.set(socket.id, {
-      username,
-      x: startX,
-      y: startY,
-      connectedTo: new Set(),
-    });
+    users.set(socket.id, { username, x: startX, y: startY, connectedTo: new Set(), sessionCode: code });
 
-    // Send the new user their own id + all existing users
-    socket.emit('init', {
-      myId: socket.id,
-      users: serializeUsers(),
-    });
+    // Put socket in a Socket.IO room keyed by session
+    socket.join(code);
 
-    // Tell everyone else about the new user
-    socket.broadcast.emit('user:joined', {
-      socketId: socket.id,
-      username,
-      x: startX,
-      y: startY,
-    });
+    // Send init to joining user
+    socket.emit('init', { myId: socket.id, users: serializeUsers(users) });
+
+    // Notify everyone else in the session
+    socket.to(code).emit('user:joined', { socketId: socket.id, username, x: startX, y: startY });
   });
 
-  // User moves
+  // ── Move ─────────────────────────────────────────────────────────────────
   socket.on('user:move', ({ x, y }) => {
-    const me = users.get(socket.id);
+    const me = _getUser(socket.id);
     if (!me) return;
 
     me.x = x;
     me.y = y;
 
-    // Broadcast position to all other users
-    socket.broadcast.emit('user:moved', { socketId: socket.id, x, y });
+    const { sessionCode, users } = me;
+    socket.to(sessionCode).emit('user:moved', { socketId: socket.id, x, y });
 
-    // Check proximity with every other user
+    // Proximity detection within the same session
     for (const [otherId, other] of users.entries()) {
       if (otherId === socket.id) continue;
 
-      const dist = getDistance(me, other);
-      const roomId = getRoomId(socket.id, otherId);
+      const dist       = getDistance(me, other);
+      const roomId     = getRoomId(sessionCode, socket.id, otherId);
       const wasConnected = me.connectedTo.has(otherId);
 
       if (dist < PROXIMITY_RADIUS && !wasConnected) {
-        // Connect
         me.connectedTo.add(otherId);
         other.connectedTo.add(socket.id);
-
         socket.join(roomId);
-        const otherSocket = io.sockets.sockets.get(otherId);
-        if (otherSocket) otherSocket.join(roomId);
-
+        io.sockets.sockets.get(otherId)?.join(roomId);
         socket.emit('proximity:connect', { userId: otherId, username: other.username, roomId });
         io.to(otherId).emit('proximity:connect', { userId: socket.id, username: me.username, roomId });
+
       } else if (dist >= PROXIMITY_RADIUS && wasConnected) {
-        // Disconnect
         me.connectedTo.delete(otherId);
         other.connectedTo.delete(socket.id);
-
         socket.leave(roomId);
-        const otherSocket = io.sockets.sockets.get(otherId);
-        if (otherSocket) otherSocket.leave(roomId);
-
+        io.sockets.sockets.get(otherId)?.leave(roomId);
         socket.emit('proximity:disconnect', { userId: otherId, roomId });
         io.to(otherId).emit('proximity:disconnect', { userId: socket.id, roomId });
       }
     }
   });
 
-  // Chat message in a proximity room
-  socket.on('chat:message', ({ roomId, text }) => {
-    const me = users.get(socket.id);
+  // ── Chat message (saved to MongoDB) ──────────────────────────────────────
+  socket.on('chat:message', async ({ roomId, text }) => {
+    const me = _getUser(socket.id);
     if (!me) return;
 
-    io.to(roomId).emit('chat:message', {
+    const payload = {
       roomId,
-      from: socket.id,
-      username: me.username,
+      from:      socket.id,
+      username:  me.username,
       text,
       timestamp: Date.now(),
-    });
+    };
+
+    io.to(roomId).emit('chat:message', payload);
+
+    // Persist to MongoDB
+    try {
+      await Message.create({ sessionCode: me.sessionCode, roomId, username: me.username, text });
+    } catch (err) {
+      console.error('Failed to save message:', err.message);
+    }
   });
 
-  // Status broadcast (muted, handRaised, reaction)
+  // ── Status (mute, hand, reaction) ────────────────────────────────────────
   socket.on('user:status', ({ status }) => {
-    socket.broadcast.emit('user:status', { socketId: socket.id, status });
+    const me = _getUser(socket.id);
+    if (!me) return;
+    socket.to(me.sessionCode).emit('user:status', { socketId: socket.id, status });
   });
 
-  // Disconnect / leave
+  // ── Disconnect ───────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
-    const me = users.get(socket.id);
+    const me = _getUser(socket.id);
     if (!me) return;
 
-    // Notify all users this person was connected to
-    for (const otherId of me.connectedTo) {
+    const { sessionCode, connectedTo, users } = me;
+
+    for (const otherId of connectedTo) {
       const other = users.get(otherId);
       if (other) {
         other.connectedTo.delete(socket.id);
-        const roomId = getRoomId(socket.id, otherId);
+        const roomId = getRoomId(sessionCode, socket.id, otherId);
         io.to(otherId).emit('proximity:disconnect', { userId: socket.id, roomId });
       }
     }
 
     users.delete(socket.id);
-    io.emit('user:left', { socketId: socket.id });
+    if (users.size === 0) sessions.delete(sessionCode); // clean up empty sessions
+
+    io.to(sessionCode).emit('user:left', { socketId: socket.id });
   });
 }
 
-function serializeUsers() {
-  const result = [];
-  for (const [socketId, u] of users.entries()) {
-    result.push({ socketId, username: u.username, x: u.x, y: u.y });
+// Helper: find which session a socket belongs to
+function _getUser(socketId) {
+  for (const [sessionCode, users] of sessions.entries()) {
+    if (users.has(socketId)) {
+      const u = users.get(socketId);
+      return { ...u, sessionCode, users };
+    }
   }
-  return result;
+  return null;
 }
 
 module.exports = { registerHandlers };

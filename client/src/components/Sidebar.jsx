@@ -1,9 +1,11 @@
 import useStore from '../store/useStore';
 
 export default function Sidebar() {
-  const users = useStore((s) => s.users);
-  const myId = useStore((s) => s.myId);
+  const users       = useStore((s) => s.users);
+  const myId        = useStore((s) => s.myId);
   const nearbyUsers = useStore((s) => s.nearbyUsers);
+  const sessionName = useStore((s) => s.sessionName);
+  const sessionCode = useStore((s) => s.sessionCode);
 
   const userList = Object.values(users);
 
@@ -17,9 +19,22 @@ export default function Sidebar() {
       <div style={{ padding: '14px 16px', borderBottom: '1px solid #1f2937' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 18 }}>🌌</span>
-          <span style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>Virtual Cosmos</span>
+          <span style={{ color: '#fff', fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {sessionName || 'Virtual Cosmos'}
+          </span>
         </div>
-        <p style={{ color: '#6b7280', fontSize: 11, marginTop: 4 }}>{userList.length} online</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+          <p style={{ color: '#6b7280', fontSize: 11, margin: 0 }}>{userList.length} online</p>
+          {sessionCode && (
+            <span
+              title="Click to copy session code"
+              onClick={() => navigator.clipboard.writeText(sessionCode)}
+              style={{ color: '#3b82f6', fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: 'pointer' }}
+            >
+              {sessionCode}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Users */}

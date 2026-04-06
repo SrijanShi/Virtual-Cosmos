@@ -4,8 +4,11 @@ import useStore from '../store/useStore';
 
 let socketInstance = null;
 
-export function getSocket() {
-  return socketInstance;
+export function getSocket() { return socketInstance; }
+
+export function joinSession(username, sessionCode) {
+  const socket = socketInstance;
+  if (socket) socket.emit('user:join', { username, sessionCode });
 }
 
 export function useSocket() {

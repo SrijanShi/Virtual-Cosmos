@@ -20,6 +20,7 @@ app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.use('/session', require('./routes/session'));
 
 // MongoDB connection (optional - gracefully skip if not available)
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/virtual-cosmos';

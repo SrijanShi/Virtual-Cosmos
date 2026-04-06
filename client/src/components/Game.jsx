@@ -6,7 +6,8 @@ import { getSocket } from '../hooks/useSocket';
 export default function Game() {
   const canvasRef = useRef(null);
   const pixiRef   = useRef(null);
-  const myId      = useStore((s) => s.myId);
+  const myId         = useStore((s) => s.myId);
+  const sessionRooms = useStore((s) => s.sessionRooms);
   const [zoom, setZoom] = useState(1.0);
 
   useEffect(() => {
@@ -24,6 +25,7 @@ export default function Game() {
         const socket = getSocket();
         if (socket) socket.emit('user:move', { x, y });
       },
+      sessionRooms,
     );
 
     pixi.onZoomChange((z) => setZoom(z));

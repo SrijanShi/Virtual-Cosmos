@@ -1,24 +1,52 @@
 import * as PIXI from 'pixi.js';
 
-const WORLD_W = 2400;
-const WORLD_H = 1800;
+export const WORLD_W = 2400;
+export const WORLD_H = 1800;
 const TILE_SIZE = 48;
 
-const ROOMS = [
-  { x: 100,  y: 100,  w: 320, h: 240, label: 'MERN STACK',        color: 0xf5e6c8 },
-  { x: 460,  y: 100,  w: 260, h: 240, label: 'UI/UX',             color: 0xd6eaf8 },
-  { x: 760,  y: 100,  w: 280, h: 240, label: 'ETHICAL HACKING',   color: 0xfde8e8 },
-  { x: 100,  y: 380,  w: 200, h: 220, label: 'DSA',               color: 0xe8f5e9 },
-  { x: 340,  y: 380,  w: 240, h: 220, label: 'Flutter',           color: 0xfff3cd },
-  { x: 620,  y: 380,  w: 240, h: 220, label: 'Financial Modeling', color: 0xf0e6ff },
-  { x: 900,  y: 380,  w: 240, h: 220, label: 'Data Analytics',    color: 0xe0f7fa },
-  { x: 1180, y: 380,  w: 200, h: 220, label: 'Python',            color: 0xfff9e6 },
-  { x: 100,  y: 640,  w: 300, h: 220, label: 'Dev Club',          color: 0xfce4ec },
-  { x: 440,  y: 640,  w: 260, h: 220, label: 'Graphic AI Club',   color: 0xe8eaf6 },
-];
+// Color palette per room name
+const ROOM_COLORS = {
+  'MERN Stack':        0xf5e6c8,
+  'UI/UX':             0xd6eaf8,
+  'Ethical Hacking':   0xfde8e8,
+  'DSA':               0xe8f5e9,
+  'Flutter':           0xfff3cd,
+  'Financial Modeling':0xf0e6ff,
+  'Data Analytics':    0xe0f7fa,
+  'Python':            0xfff9e6,
+  'Dev Club':          0xfce4ec,
+  'Graphic AI Club':   0xe8eaf6,
+};
+const FALLBACK_COLORS = [0xf5e6c8, 0xd6eaf8, 0xfde8e8, 0xe8f5e9, 0xfff3cd, 0xf0e6ff, 0xe0f7fa, 0xfff9e6];
 
-export function buildWorld(container) {
-  // Draw floor tiles
+// Layout rooms in a grid automatically based on count
+function layoutRooms(roomNames) {
+  const COLS = 3;
+  const COL_W = 280;
+  const ROW_H = 240;
+  const GAP_X = 40;
+  const GAP_Y = 40;
+  const START_X = 100;
+  const START_Y = 100;
+
+  return roomNames.map((label, i) => {
+    const col = i % COLS;
+    const row = Math.floor(i / COLS);
+    return {
+      x: START_X + col * (COL_W + GAP_X),
+      y: START_Y + row * (ROW_H + GAP_Y),
+      w: COL_W,
+      h: ROW_H,
+      label,
+      color: ROOM_COLORS[label] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
+    };
+  });
+}
+
+export function buildWorld(container, roomNames) {
+  const rooms = layoutRooms(roomNames && roomNames.length ? roomNames : Object.keys(ROOM_COLORS));
+
+  // Floor tiles
   const floor = new PIXI.Graphics();
   for (let tx = 0; tx < WORLD_W; tx += TILE_SIZE) {
     for (let ty = 0; ty < WORLD_H; ty += TILE_SIZE) {
@@ -28,11 +56,9 @@ export function buildWorld(container) {
   }
   container.addChild(floor);
 
-  // Draw border
+  // Border + trees
   const border = new PIXI.Graphics();
   border.rect(0, 0, WORLD_W, WORLD_H).stroke({ color: 0x5a4a30, width: 4 });
-
-  // Draw trees / shrubs border decoration (simple green dots)
   for (let tx = 0; tx < WORLD_W; tx += 48) {
     drawTree(border, tx, 0);
     drawTree(border, tx, WORLD_H - 32);
@@ -43,10 +69,12 @@ export function buildWorld(container) {
   }
   container.addChild(border);
 
-  // Draw rooms
-  for (const room of ROOMS) {
+  // Rooms
+  for (const room of rooms) {
     drawRoom(container, room);
   }
+
+  return rooms;
 }
 
 function drawTree(g, x, y) {
@@ -60,22 +88,14 @@ function drawRoom(container, { x, y, w, h, label, color }) {
   g.rect(x, y, w, h).stroke({ color: 0xa09070, width: 2 });
   container.addChild(g);
 
-  // Label
   const text = new PIXI.Text({
     text: label,
-    style: {
-      fontFamily: 'Inter, system-ui, sans-serif',
-      fontSize: 13,
-      fontWeight: '600',
-      fill: 0x4a3a20,
-      align: 'center',
-    },
+    style: { fontFamily: 'Inter, system-ui, sans-serif', fontSize: 13, fontWeight: '600', fill: 0x4a3a20 },
   });
   text.x = x + w / 2 - text.width / 2;
   text.y = y + 10;
   container.addChild(text);
 
-  // Desks inside room
   drawDesks(container, x, y, w, h);
 }
 
@@ -84,23 +104,17 @@ function drawDesks(container, rx, ry, rw, rh) {
   const rows = Math.floor((rh - 50) / 55);
   const startX = rx + 20;
   const startY = ry + 38;
-
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const dx = startX + c * 55;
       const dy = startY + r * 55;
       const desk = new PIXI.Graphics();
-      // Desk surface
       desk.rect(dx, dy, 38, 28).fill({ color: 0xc8a87a });
       desk.rect(dx, dy, 38, 28).stroke({ color: 0x8a6a40, width: 1 });
-      // Monitor
       desk.rect(dx + 8, dy - 12, 22, 14).fill({ color: 0x2a2a3a });
       desk.rect(dx + 17, dy - 1, 4, 3).fill({ color: 0x2a2a3a });
-      // Chair
       desk.circle(dx + 19, dy + 38, 10).fill({ color: 0x6a7a8a });
       container.addChild(desk);
     }
   }
 }
-
-export { ROOMS, WORLD_W, WORLD_H };

@@ -1,23 +1,32 @@
 import { useState } from 'react';
-import { useSocket } from './hooks/useSocket';
+import { useSocket, joinSession } from './hooks/useSocket';
 import useStore from './store/useStore';
-import LoginModal from './components/LoginModal';
+import LandingPage from './components/LandingPage';
 import Game from './components/Game';
 import Sidebar from './components/Sidebar';
 import ChatPanel from './components/ChatPanel';
 import Toolbar from './components/Toolbar';
 
 export default function App() {
-  const [joined, setJoined] = useState(false);
+  const [entered, setEntered] = useState(false);
   useSocket();
 
   const myId = useStore((s) => s.myId);
+  const setUsername = useStore((s) => s.setUsername);
+  const setSession  = useStore((s) => s.setSession);
+
+  const handleEnter = ({ username, sessionCode, sessionName, rooms, isHost }) => {
+    setUsername(username);
+    setSession({ sessionCode, sessionName, sessionRooms: rooms, isHost });
+    joinSession(username, sessionCode);
+    setEntered(true);
+  };
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#030712' }}>
-      {!joined && <LoginModal onJoin={() => setJoined(true)} />}
+      {!entered && <LandingPage onEnter={handleEnter} />}
 
-      {joined && (
+      {entered && (
         <>
           <Sidebar />
           <div style={{ marginLeft: 224, height: '100%', paddingBottom: 56, position: 'relative', boxSizing: 'border-box' }}>

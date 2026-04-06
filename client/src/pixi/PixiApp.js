@@ -9,7 +9,7 @@ const ZOOM_STEP = 0.15;
 const ZOOM_LERP = 0.12;
 
 export class PixiApp {
-  constructor(canvas, myId, initialUsers, onMove) {
+  constructor(canvas, myId, initialUsers, onMove, sessionRooms = []) {
     this.myId   = myId;
     this.onMove = onMove;
 
@@ -90,6 +90,7 @@ export class PixiApp {
     };
     this._onTouchEnd = () => { this._dragging = false; };
 
+    this._sessionRooms = sessionRooms;
     this.app = new PIXI.Application();
     this._initAsync(canvas, initialUsers).catch(console.error);
   }
@@ -106,7 +107,7 @@ export class PixiApp {
 
     this.world = new PIXI.Container();
     this.app.stage.addChild(this.world);
-    buildWorld(this.world);
+    buildWorld(this.world, this._sessionRooms);
 
     for (const u of initialUsers) {
       this.addAvatar(u.socketId, u.username, u.x, u.y, u.socketId === this.myId);

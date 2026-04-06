@@ -5,6 +5,12 @@ const useStore = create((set) => ({
   myId: null,
   username: '',
 
+  // Session
+  sessionCode: null,
+  sessionName: '',
+  sessionRooms: [],
+  isHost: false,
+
   // All users in the cosmos (including self)
   users: {}, // { [socketId]: { username, x, y } }
 
@@ -19,6 +25,8 @@ const useStore = create((set) => ({
   // Actions
   setMyId: (myId) => set({ myId }),
   setUsername: (username) => set({ username }),
+  setSession: ({ sessionCode, sessionName, sessionRooms, isHost }) =>
+    set({ sessionCode, sessionName, sessionRooms, isHost }),
 
   setUsers: (users) => {
     const map = {};
