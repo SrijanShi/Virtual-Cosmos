@@ -29,7 +29,7 @@ export default function ChatPanel() {
   };
 
   const panelStyle = {
-    position: 'fixed', bottom: 56, right: 16, zIndex: 40,
+    position: 'fixed', bottom: 64, right: 16, zIndex: 40,
     width: 300, background: 'rgba(3,7,18,0.95)',
     border: '1px solid #374151', borderRadius: 16,
     boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
@@ -38,12 +38,13 @@ export default function ChatPanel() {
 
   if (!isOpen) {
     return (
-      <div style={{ position: 'fixed', bottom: 56, right: 16, zIndex: 40 }}>
+      <div style={{ position: 'fixed', bottom: 64, right: 16, zIndex: 40 }}>
         <div style={{
           background: 'rgba(17,24,39,0.85)', border: '1px solid #374151',
           borderRadius: 12, padding: '8px 14px', color: '#6b7280', fontSize: 12,
+          whiteSpace: 'nowrap',
         }}>
-          Move close to someone to chat
+          Walk close to someone to chat
         </div>
       </div>
     );

@@ -20,7 +20,7 @@ export default function App() {
       {joined && (
         <>
           <Sidebar />
-          <div style={{ marginLeft: 224, height: '100%', paddingBottom: 48, position: 'relative', boxSizing: 'border-box' }}>
+          <div style={{ marginLeft: 224, height: '100%', paddingBottom: 56, position: 'relative', boxSizing: 'border-box' }}>
             <Game />
             {!myId && (
               <div style={{

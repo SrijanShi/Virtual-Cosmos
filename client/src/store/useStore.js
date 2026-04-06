@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-const useStore = create((set, get) => ({
+const useStore = create((set) => ({
   // Identity
   myId: null,
   username: '',
@@ -8,10 +8,13 @@ const useStore = create((set, get) => ({
   // All users in the cosmos (including self)
   users: {}, // { [socketId]: { username, x, y } }
 
+  // User status indicators (muted, handRaised) broadcast to all
+  userStatuses: {}, // { [socketId]: { muted, handRaised } }
+
   // Proximity chat state
   nearbyUsers: {}, // { [socketId]: { username, roomId } }
   activeRooms: {}, // { [roomId]: [{ from, username, text, timestamp }] }
-  openRoomId: null, // which chat room is currently open
+  openRoomId: null,
 
   // Actions
   setMyId: (myId) => set({ myId }),
@@ -32,7 +35,9 @@ const useStore = create((set, get) => ({
     delete users[socketId];
     const nearbyUsers = { ...state.nearbyUsers };
     delete nearbyUsers[socketId];
-    return { users, nearbyUsers };
+    const userStatuses = { ...state.userStatuses };
+    delete userStatuses[socketId];
+    return { users, nearbyUsers, userStatuses };
   }),
 
   updateUserPosition: (socketId, x, y) => set((state) => ({
@@ -49,6 +54,13 @@ const useStore = create((set, get) => ({
     },
   })),
 
+  setUserStatus: (socketId, status) => set((state) => ({
+    userStatuses: {
+      ...state.userStatuses,
+      [socketId]: { ...(state.userStatuses[socketId] || {}), ...status },
+    },
+  })),
+
   addProximityConnect: (userId, username, roomId) => set((state) => ({
     nearbyUsers: { ...state.nearbyUsers, [userId]: { username, roomId } },
     activeRooms: { ...state.activeRooms, [roomId]: state.activeRooms[roomId] || [] },
@@ -59,13 +71,8 @@ const useStore = create((set, get) => ({
     const nearbyUsers = { ...state.nearbyUsers };
     const removedRoom = nearbyUsers[userId]?.roomId;
     delete nearbyUsers[userId];
-
-    // Close room if no nearby users remain in it
     const stillOpen = Object.values(nearbyUsers).some(u => u.roomId === removedRoom);
-    return {
-      nearbyUsers,
-      openRoomId: stillOpen ? state.openRoomId : null,
-    };
+    return { nearbyUsers, openRoomId: stillOpen ? state.openRoomId : null };
   }),
 
   addMessage: (roomId, msg) => set((state) => ({

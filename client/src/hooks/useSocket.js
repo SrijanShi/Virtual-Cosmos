@@ -24,28 +24,24 @@ export function useSocket() {
       s.setUsers(users);
     });
 
-    socket.on('user:joined', (user) => {
-      useStore.getState().addUser(user);
-    });
-
-    socket.on('user:left', ({ socketId }) => {
-      useStore.getState().removeUser(socketId);
-    });
-
-    socket.on('user:moved', ({ socketId, x, y }) => {
-      useStore.getState().updateUserPosition(socketId, x, y);
-    });
+    socket.on('user:joined', (user) => useStore.getState().addUser(user));
+    socket.on('user:left', ({ socketId }) => useStore.getState().removeUser(socketId));
+    socket.on('user:moved', ({ socketId, x, y }) => useStore.getState().updateUserPosition(socketId, x, y));
 
     socket.on('proximity:connect', ({ userId, username, roomId }) => {
       useStore.getState().addProximityConnect(userId, username, roomId);
     });
-
     socket.on('proximity:disconnect', ({ userId }) => {
       useStore.getState().removeProximityConnect(userId);
     });
 
     socket.on('chat:message', ({ roomId, from, username, text, timestamp }) => {
       useStore.getState().addMessage(roomId, { from, username, text, timestamp });
+    });
+
+    // Status updates (mute, hand raise)
+    socket.on('user:status', ({ socketId, status }) => {
+      useStore.getState().setUserStatus(socketId, status);
     });
 
     return () => {

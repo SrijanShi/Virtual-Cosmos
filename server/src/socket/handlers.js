@@ -98,6 +98,11 @@ function registerHandlers(io, socket) {
     });
   });
 
+  // Status broadcast (muted, handRaised, reaction)
+  socket.on('user:status', ({ status }) => {
+    socket.broadcast.emit('user:status', { socketId: socket.id, status });
+  });
+
   // Disconnect / leave
   socket.on('disconnect', () => {
     const me = users.get(socket.id);
