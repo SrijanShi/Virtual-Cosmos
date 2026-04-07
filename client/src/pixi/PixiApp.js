@@ -91,6 +91,9 @@ export class PixiApp {
     this._onTouchEnd = () => { this._dragging = false; };
 
     this._sessionRooms = sessionRooms;
+    this._rooms        = [];   // filled after buildWorld
+    this._currentZone  = null; // room label user is currently in
+    this._onZoneChange = null;
     this.app = new PIXI.Application();
     this._initAsync(canvas, initialUsers).catch(console.error);
   }
@@ -107,7 +110,7 @@ export class PixiApp {
 
     this.world = new PIXI.Container();
     this.app.stage.addChild(this.world);
-    buildWorld(this.world, this._sessionRooms);
+    this._rooms = buildWorld(this.world, this._sessionRooms);
 
     for (const u of initialUsers) {
       this.addAvatar(u.socketId, u.username, u.x, u.y, u.socketId === this.myId);
@@ -173,6 +176,10 @@ export class PixiApp {
 
     for (const avatar of this.avatars.values()) avatar.tick();
 
+    // Zone detection — runs every frame using logical target position
+    // so it fires even at spawn, not just on key presses
+    this._checkZone(me.targetX, me.targetY);
+
     // Camera follows local avatar — disabled while user has panned away
     if (!this._isPanned) {
       const screenW = this.app.screen.width;
@@ -203,6 +210,21 @@ export class PixiApp {
   }
 
   onZoomChange(cb) { this._onZoomChange = cb; }
+  onZoneChange(cb) { this._onZoneChange = cb; }
+
+  _checkZone(x, y) {
+    let zone = null;
+    for (const room of this._rooms) {
+      if (x >= room.x && x <= room.x + room.w && y >= room.y && y <= room.y + room.h) {
+        zone = room.label;
+        break;
+      }
+    }
+    if (zone !== this._currentZone) {
+      this._currentZone = zone;
+      if (this._onZoneChange) this._onZoneChange(zone);
+    }
+  }
 
   destroy() {
     const c = this.app?.canvas;

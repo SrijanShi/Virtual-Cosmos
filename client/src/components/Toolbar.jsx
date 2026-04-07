@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import useStore from '../store/useStore';
 import { getSocket } from '../hooks/useSocket';
+import * as localStreams from '../media/localStreams';
+import * as peerManager from '../webrtc/peerManager';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function emitStatus(status) {
@@ -26,21 +28,26 @@ const REACTIONS = ['👍','👏','❤️','😂','🎉','🔥','😮','👋'];
 
 // ── main component ────────────────────────────────────────────────────────────
 export default function Toolbar() {
-  const username     = useStore((s) => s.username);
-  const nearbyUsers  = useStore((s) => s.nearbyUsers);
-  const nearbyCount  = Object.keys(nearbyUsers).length;
+  const username    = useStore((s) => s.username);
+  const nearbyUsers = useStore((s) => s.nearbyUsers);
+  const nearbyCount = Object.keys(nearbyUsers).length;
+  const isHost      = useStore((s) => s.isHost);
+  const currentZone = useStore((s) => s.currentZone);
 
   // ── mic ──
-  const [muted, setMuted]          = useState(false);
-  const [micAllowed, setMicAllowed] = useState(false);
-  const micStreamRef               = useRef(null);
+  const [muted, setMuted]     = useState(true);
+  const micStreamRef          = useRef(null);
 
   const toggleMic = async () => {
     try {
       if (!micStreamRef.current) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         micStreamRef.current = stream;
-        setMicAllowed(true);
+        localStreams.setMicStream(stream);
+        emitStatus({ muted: false });
+        setMuted(false);
+        showToast('Microphone on');
+        return;
       }
       const nextMuted = !muted;
       micStreamRef.current.getAudioTracks().forEach(t => { t.enabled = !nextMuted; });
@@ -53,23 +60,26 @@ export default function Toolbar() {
   };
 
   // ── camera ──
-  const [camOn, setCamOn]       = useState(false);
-  const camStreamRef            = useRef(null);
-  const videoRef                = useRef(null);
+  const [camOn, setCamOn] = useState(false);
+  const camStreamRef      = useRef(null);
+  const videoRef          = useRef(null);
 
   const toggleCamera = async () => {
     if (camOn) {
       camStreamRef.current?.getTracks().forEach(t => t.stop());
       camStreamRef.current = null;
+      localStreams.setCamStream(null);
       setCamOn(false);
+      emitStatus({ camOn: false });
       showToast('Camera off');
     } else {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         camStreamRef.current = stream;
+        localStreams.setCamStream(stream);
         setCamOn(true);
+        emitStatus({ camOn: true });
         showToast('Camera on');
-        // attach to video element after state update
         setTimeout(() => {
           if (videoRef.current) videoRef.current.srcObject = stream;
         }, 50);
@@ -79,22 +89,48 @@ export default function Toolbar() {
     }
   };
 
-  // ── share / invite ──
-  const handleShare = () => {
-    const url = window.location.href;
-    navigator.clipboard.writeText(url).then(() => showToast('Link copied to clipboard!'));
+  // ── screen share ──
+  const [sharing, setSharing] = useState(false);
+  const screenStreamRef       = useRef(null);
+
+  const toggleScreenShare = async () => {
+    if (sharing) {
+      screenStreamRef.current?.getTracks().forEach(t => t.stop());
+      screenStreamRef.current = null;
+      localStreams.setScreenStream(null);
+      peerManager.stopAllSharing();
+      getSocket()?.emit('screenshare:stop');
+      setSharing(false);
+      showToast('Screen share stopped');
+    } else {
+      if (!currentZone) { showToast('Enter a room to share your screen'); return; }
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        screenStreamRef.current = stream;
+        localStreams.setScreenStream(stream);
+        setSharing(true);
+        showToast(`Sharing screen in ${currentZone}`);
+        getSocket()?.emit('screenshare:start', { roomZone: currentZone });
+        stream.getVideoTracks()[0].onended = () => {
+          localStreams.setScreenStream(null);
+          peerManager.stopAllSharing();
+          getSocket()?.emit('screenshare:stop');
+          setSharing(false);
+        };
+      } catch {
+        showToast('Screen share cancelled');
+      }
+    }
   };
 
-  const handleInvite = () => {
-    const url = window.location.href;
-    navigator.clipboard.writeText(`Join me in Virtual Cosmos: ${url}`)
-      .then(() => showToast('Invite link copied!'));
-  };
+  // ── share / invite ──
+  const handleShare  = () => navigator.clipboard.writeText(window.location.href).then(() => showToast('Link copied!'));
+  const handleInvite = () => navigator.clipboard.writeText(`Join me in Virtual Cosmos: ${window.location.href}`).then(() => showToast('Invite link copied!'));
 
   // ── record ──
-  const [recording, setRecording]   = useState(false);
-  const recorderRef                 = useRef(null);
-  const recChunksRef                = useRef([]);
+  const [recording, setRecording] = useState(false);
+  const recorderRef               = useRef(null);
+  const recChunksRef              = useRef([]);
 
   const toggleRecord = async () => {
     if (recording) {
@@ -141,7 +177,6 @@ export default function Toolbar() {
     setShowReactions(false);
     emitStatus({ reaction: emoji });
     showToast(`You reacted ${emoji}`);
-    // floating emoji above canvas
     spawnFloatingEmoji(emoji);
   };
 
@@ -150,6 +185,12 @@ export default function Toolbar() {
   const leaveRoom = () => {
     showToast('Left the cosmos');
     setTimeout(() => window.location.reload(), 1000);
+  };
+
+  const closeSession = () => {
+    setShowAction(false);
+    if (!confirm('Close this session for everyone?')) return;
+    getSocket()?.emit('session:close');
   };
 
   // close dropdowns on outside click
@@ -163,8 +204,17 @@ export default function Toolbar() {
   useEffect(() => () => {
     micStreamRef.current?.getTracks().forEach(t => t.stop());
     camStreamRef.current?.getTracks().forEach(t => t.stop());
+    screenStreamRef.current?.getTracks().forEach(t => t.stop());
     recorderRef.current?.stop();
   }, []);
+
+  const actionMenuItems = [
+    { label: '📋 Copy user ID',  fn: () => { navigator.clipboard.writeText(useStore.getState().myId || ''); showToast('User ID copied'); setShowAction(false); } },
+    { label: '🔗 Share room',    fn: () => { handleShare(); setShowAction(false); } },
+    { label: '🔄 Reload cosmos', fn: () => window.location.reload() },
+    { label: '🚪 Leave',         fn: leaveRoom, red: true },
+    ...(isHost ? [{ label: '🔴 Close Session', fn: closeSession, red: true }] : []),
+  ];
 
   return (
     <>
@@ -210,15 +260,10 @@ export default function Toolbar() {
         <div onClick={e => e.stopPropagation()} style={{
           position: 'fixed', bottom: 68, right: 16,
           background: '#1f2937', border: '1px solid #374151', borderRadius: 10,
-          overflow: 'hidden', zIndex: 50, minWidth: 160,
+          overflow: 'hidden', zIndex: 50, minWidth: 180,
           boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
         }}>
-          {[
-            { label: '📋 Copy user ID', fn: () => { navigator.clipboard.writeText(useStore.getState().myId || ''); showToast('User ID copied'); setShowAction(false); } },
-            { label: '🔗 Share room', fn: () => { handleShare(); setShowAction(false); } },
-            { label: '🔄 Reload cosmos', fn: () => window.location.reload() },
-            { label: '🚪 Leave', fn: leaveRoom, red: true },
-          ].map(({ label, fn, red }) => (
+          {actionMenuItems.map(({ label, fn, red }) => (
             <button key={label} onClick={fn} style={{
               display: 'block', width: '100%', textAlign: 'left',
               padding: '10px 14px', background: 'none', border: 'none',
@@ -258,6 +303,8 @@ export default function Toolbar() {
             icon={muted ? <MicOffIcon /> : <MicIcon />} />
           <ToolBtn label={camOn ? 'Camera' : 'Camera'} active={camOn} activeColor="#3b82f6" onClick={toggleCamera}
             icon={camOn ? <CamOnIcon /> : <CamIcon />} />
+          <ToolBtn label={sharing ? 'Stop Share' : 'Share Screen'} active={sharing} activeColor="#8b5cf6" onClick={toggleScreenShare}
+            icon={<ScreenShareIcon active={sharing} />} />
           <Divider />
           <ToolBtn label="Share" onClick={handleShare} icon={<ShareIcon />} />
           <Divider />
@@ -270,7 +317,7 @@ export default function Toolbar() {
           <ToolBtn label="React" active={showReactions} activeColor="#8b5cf6"
             onClick={(e) => { e.stopPropagation(); setShowReactions(v => !v); }}
             icon={<span style={{ fontSize: 16 }}>👍</span>} />
-          <ToolBtn label="Action" active={showAction} activeColor="#6b7280"
+          <ToolBtn label="More" active={showAction} activeColor="#6b7280"
             onClick={(e) => { e.stopPropagation(); setShowAction(v => !v); }}
             icon={<ActionIcon />} />
         </div>
@@ -302,21 +349,13 @@ function spawnFloatingEmoji(emoji) {
   const el = document.createElement('div');
   el.textContent = emoji;
   Object.assign(el.style, {
-    position: 'fixed',
-    bottom: '72px',
-    left: `${40 + Math.random() * 20}%`,
-    fontSize: '32px',
-    zIndex: '9998',
-    pointerEvents: 'none',
+    position: 'fixed', bottom: '72px', left: `${40 + Math.random() * 20}%`,
+    fontSize: '32px', zIndex: '9998', pointerEvents: 'none',
     transition: 'transform 1.8s ease-out, opacity 1.8s ease-out',
-    transform: 'translateY(0)',
-    opacity: '1',
+    transform: 'translateY(0)', opacity: '1',
   });
   document.body.appendChild(el);
-  requestAnimationFrame(() => {
-    el.style.transform = 'translateY(-120px)';
-    el.style.opacity = '0';
-  });
+  requestAnimationFrame(() => { el.style.transform = 'translateY(-120px)'; el.style.opacity = '0'; });
   setTimeout(() => el.remove(), 1900);
 }
 
@@ -324,28 +363,17 @@ function spawnFloatingEmoji(emoji) {
 function ToolBtn({ label, icon, active = false, activeColor = '#3b82f6', onClick }) {
   const [hovered, setHovered] = useState(false);
   return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      title={label}
+    <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} title={label}
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         gap: 2, padding: '4px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
         background: active ? `${activeColor}22` : hovered ? '#1f2937' : 'transparent',
         minWidth: 52, transition: 'background 0.15s',
-      }}
-    >
-      <div style={{
-        width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: active ? activeColor : hovered ? '#e5e7eb' : '#9ca3af',
       }}>
+      <div style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', color: active ? activeColor : hovered ? '#e5e7eb' : '#9ca3af' }}>
         {icon}
       </div>
-      <span style={{
-        fontSize: 10, color: active ? activeColor : hovered ? '#e5e7eb' : '#6b7280',
-        fontWeight: 500, whiteSpace: 'nowrap',
-      }}>
+      <span style={{ fontSize: 10, color: active ? activeColor : hovered ? '#e5e7eb' : '#6b7280', fontWeight: 500, whiteSpace: 'nowrap' }}>
         {label}
       </span>
     </button>
@@ -388,6 +416,16 @@ function CamOnIcon() {
       <polygon points="23 7 16 12 23 17 23 7" fill="currentColor"/>
       <rect x="1" y="5" width="15" height="14" rx="2" fill="currentColor" opacity="0.3"/>
       <rect x="1" y="5" width="15" height="14" rx="2"/>
+    </svg>
+  );
+}
+function ScreenShareIcon({ active }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2" fill={active ? 'currentColor' : 'none'} opacity={active ? 0.2 : 1}/>
+      <rect x="2" y="3" width="20" height="14" rx="2"/>
+      <polyline points="8 21 12 17 16 21"/><line x1="12" y1="17" x2="12" y2="21"/>
+      {active && <path d="M9 10l3-3 3 3M12 7v6" strokeWidth="2"/>}
     </svg>
   );
 }

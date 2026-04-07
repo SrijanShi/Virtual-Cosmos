@@ -15,6 +15,10 @@ export default function ChatPanel() {
   const nearbyList = Object.values(nearbyUsers);
   const isOpen = nearbyList.length > 0 && openRoomId;
 
+  // Count total people in the room (nearby + self)
+  const groupSize = openRoomId ? (openRoomId.split('--').length) : 0;
+  const isGroup = groupSize >= 3;
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -56,7 +60,9 @@ export default function ChatPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid #1f2937', background: 'rgba(17,24,39,0.5)' }}>
         <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#34d399' }} />
         <div style={{ flex: 1 }}>
-          <p style={{ color: '#fff', fontSize: 13, fontWeight: 600, margin: 0 }}>Nearby Chat</p>
+          <p style={{ color: '#fff', fontSize: 13, fontWeight: 600, margin: 0 }}>
+            {isGroup ? `Group Chat (${groupSize})` : 'Nearby Chat'}
+          </p>
           <p style={{ color: '#6b7280', fontSize: 11, margin: 0 }}>{nearbyList.map(u => u.username).join(', ')}</p>
         </div>
         <span style={{ color: '#34d399', fontSize: 11, fontWeight: 600 }}>Connected</span>

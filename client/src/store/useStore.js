@@ -22,6 +22,11 @@ const useStore = create((set) => ({
   activeRooms: {}, // { [roomId]: [{ from, username, text, timestamp }] }
   openRoomId: null,
 
+  // Current room zone the local user is standing in (for screen share)
+  currentZone: null,
+  // Active screen share in the current zone: { sharerId, sharerName } | null
+  screenShareActive: null,
+
   // Actions
   setMyId: (myId) => set({ myId }),
   setUsername: (username) => set({ username }),
@@ -77,10 +82,10 @@ const useStore = create((set) => ({
 
   removeProximityConnect: (userId) => set((state) => {
     const nearbyUsers = { ...state.nearbyUsers };
-    const removedRoom = nearbyUsers[userId]?.roomId;
     delete nearbyUsers[userId];
-    const stillOpen = Object.values(nearbyUsers).some(u => u.roomId === removedRoom);
-    return { nearbyUsers, openRoomId: stillOpen ? state.openRoomId : null };
+    // If no one nearby remains, clear the open room
+    const openRoomId = Object.keys(nearbyUsers).length > 0 ? state.openRoomId : null;
+    return { nearbyUsers, openRoomId };
   }),
 
   addMessage: (roomId, msg) => set((state) => ({
@@ -91,6 +96,21 @@ const useStore = create((set) => ({
   })),
 
   setOpenRoom: (roomId) => set({ openRoomId: roomId }),
+
+  // Called when the cluster changes — updates all nearbyUsers to the new shared roomId
+  updateGroupRoom: (roomId) => set((state) => {
+    const nearbyUsers = {};
+    for (const [id, user] of Object.entries(state.nearbyUsers)) {
+      nearbyUsers[id] = { ...user, roomId };
+    }
+    const activeRooms = roomId
+      ? { ...state.activeRooms, [roomId]: state.activeRooms[roomId] || [] }
+      : state.activeRooms;
+    return { nearbyUsers, openRoomId: roomId, activeRooms };
+  }),
+
+  setCurrentZone: (zone) => set({ currentZone: zone }),
+  setScreenShareActive: (info) => set({ screenShareActive: info }),
 
   loadHistory: (history) => set((state) => {
     const merged = { ...state.activeRooms };

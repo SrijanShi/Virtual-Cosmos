@@ -6,6 +6,7 @@ import Game from './components/Game';
 import Sidebar from './components/Sidebar';
 import ChatPanel from './components/ChatPanel';
 import Toolbar from './components/Toolbar';
+import ProximityMedia from './components/ProximityMedia';
 
 export default function App() {
   const [entered, setEntered] = useState(false);
@@ -41,6 +42,7 @@ export default function App() {
               </div>
             )}
           </div>
+          <ProximityMedia />
           <ChatPanel />
           <Toolbar />
         </>
