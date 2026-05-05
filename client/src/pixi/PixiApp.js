@@ -33,6 +33,8 @@ export class PixiApp {
       if (e.key === '-' || e.key === '_') { e.preventDefault(); this._stepZoom(-1); }
     };
     this._keyUp = (e) => { this.keys[e.key] = false; };
+    this._onBlur = () => { this.keys = {}; };
+    this._onVisibility = () => { if (document.hidden) this.keys = {}; };
 
     // Left-click drag
     this._onMouseDown = (e) => {
@@ -94,6 +96,7 @@ export class PixiApp {
     this._rooms        = [];   // filled after buildWorld
     this._currentZone  = null; // room label user is currently in
     this._onZoneChange = null;
+    this._destroyed    = false;
     this.app = new PIXI.Application();
     this._initAsync(canvas, initialUsers).catch(console.error);
   }
@@ -108,6 +111,8 @@ export class PixiApp {
       autoDensity: true,
     });
 
+    if (this._destroyed) return;
+
     this.world = new PIXI.Container();
     this.app.stage.addChild(this.world);
     this._rooms = buildWorld(this.world, this._sessionRooms);
@@ -117,8 +122,10 @@ export class PixiApp {
     }
 
     const c = this.app.canvas;
-    window.addEventListener('keydown',   this._keyDown);
-    window.addEventListener('keyup',     this._keyUp);
+    window.addEventListener('keydown',        this._keyDown);
+    window.addEventListener('keyup',          this._keyUp);
+    window.addEventListener('blur',           this._onBlur);
+    document.addEventListener('visibilitychange', this._onVisibility);
     c.addEventListener('mousedown',      this._onMouseDown);
     window.addEventListener('mousemove', this._onMouseMove);
     window.addEventListener('mouseup',   this._onMouseUp);
@@ -227,11 +234,14 @@ export class PixiApp {
   }
 
   destroy() {
+    this._destroyed = true;
     const c = this.app?.canvas;
-    window.removeEventListener('keydown',   this._keyDown);
-    window.removeEventListener('keyup',     this._keyUp);
-    window.removeEventListener('mousemove', this._onMouseMove);
-    window.removeEventListener('mouseup',   this._onMouseUp);
+    window.removeEventListener('keydown',        this._keyDown);
+    window.removeEventListener('keyup',          this._keyUp);
+    window.removeEventListener('blur',           this._onBlur);
+    window.removeEventListener('mousemove',      this._onMouseMove);
+    window.removeEventListener('mouseup',        this._onMouseUp);
+    document.removeEventListener('visibilitychange', this._onVisibility);
     c?.removeEventListener('mousedown',   this._onMouseDown);
     c?.removeEventListener('touchstart',  this._onTouchStart);
     c?.removeEventListener('touchmove',   this._onTouchMove);
