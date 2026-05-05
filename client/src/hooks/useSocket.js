@@ -20,7 +20,7 @@ export function useSocket() {
     if (initialized.current) return;
     initialized.current = true;
 
-    const socket = io('http://localhost:3001');
+    const socket = io(import.meta.env.VITE_SERVER_URL ?? window.location.origin);
     socketInstance = socket;
 
     socket.on('init', ({ myId, users }) => {
