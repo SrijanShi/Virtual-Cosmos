@@ -48,7 +48,7 @@ export default function LandingPage({ onEnter }) {
     }
     setLoading(true); setError('');
     try {
-      const res = await fetch('http://localhost:3001/session/create', {
+      const res = await fetch('/session/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: spaceName.trim(), hostName: hostName.trim(), isPrivate, password: createPassword.trim(), rooms: selectedRooms }),
@@ -69,7 +69,7 @@ export default function LandingPage({ onEnter }) {
     setLoading(true); setError('');
     try {
       const code = joinCode.trim().toUpperCase();
-      const res = await fetch(`http://localhost:3001/session/${code}`);
+      const res = await fetch(`/session/${code}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Session not found');
 
@@ -82,7 +82,7 @@ export default function LandingPage({ onEnter }) {
 
       if (data.isPrivate && joinNeedsPassword) {
         // Verify password
-        const vRes = await fetch(`http://localhost:3001/session/${code}/verify`, {
+        const vRes = await fetch(`/session/${code}/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: joinPassword }),
